@@ -1,35 +1,40 @@
-# Claude Config
+# Claude Code 설정 — 디자이너용 (v261118)
 
-Claude Code 전역 설정과 skill.
+이전 패키지(Git 규칙)에 **윤문 규칙**을 더한 업데이트입니다. Claude가 쓰는 답변·커밋·PR 글에서
+AI 티(번역투, `결론적으로`류 관용구, 연결어미 뒤 쉼표 등)를 처음부터 빼고 씁니다.
 
-## 연결
+## 들어 있는 것
 
-컴퓨터마다 한 번.
+| 파일 | 역할 |
+|---|---|
+| `CLAUDE.md` | 전역 기준 — 언어, 응답 형식, 규칙 목록 |
+| `rules/git.md` | 브랜치·커밋·PR·버전 규칙 (항상 적용) |
+| `rules/writing.md` | 윤문 규칙 (항상 적용, 새로 추가) |
+| `skills/git-workflow/` | 릴리즈·핫픽스 절차, PR 템플릿 |
+| `settings.json` | 간결한 응답 스타일 |
+
+## 설치
+
+압축을 푼 폴더에서 실행합니다. 기존 `CLAUDE.md`·`rules/`·`skills/git-workflow`는 덮어씁니다 —
+직접 고친 내용이 있으면 먼저 백업하세요.
 
 ```bash
-cd ~/.claude
-git clone https://github.com/maya726/claude-config.git
-ln -sf claude-config/CLAUDE.md CLAUDE.md
-# 이미 skills 폴더가 있으면 ln 이 그 안에 링크를 만든다. 먼저 치운다. synced/ 는 Claude Code 가 다시 받는다
-[ -d skills ] && [ ! -L skills ] && mv skills skills.old-$(date +%y%m%d)
-ln -sfn claude-config/skills skills
-ls skills/git-workflow/SKILL.md   # 보이면 연결된 것
+mkdir -p ~/.claude/rules ~/.claude/skills
+cp CLAUDE.md ~/.claude/CLAUDE.md
+cp rules/*.md ~/.claude/rules/
+cp -r skills/git-workflow ~/.claude/skills/
+# settings.json 은 덮어쓰지 않고 병합 (jq 필요)
+[ -f ~/.claude/settings.json ] || echo '{}' > ~/.claude/settings.json
+jq -s '.[0] * .[1]' ~/.claude/settings.json settings.json > /tmp/s.json && mv /tmp/s.json ~/.claude/settings.json
 ```
 
-## 최신 내용 받기
-
-```bash
-cd ~/.claude/claude-config
-git pull
-```
-
-링크는 다시 걸지 않는다. Claude Code 의 새 대화부터 적용된다.
-
-## Plugins
-
-### Figma
-Figma 파일을 읽어 화면 코드로 옮길 때 쓴다.
+남이 쓴 글을 따로 윤문하고 싶으면 Claude Code에서 플러그인을 설치합니다.
 
 ```
-/plugin install figma@claude-plugins-official
+/plugin marketplace add epoko77-ai/im-not-ai
+/plugin install humanize-korean@im-not-ai
 ```
+
+## 확인
+
+Claude Code를 새로 열고 `/memory`를 입력하면 `writing.md`·`git.md`가 목록에 보입니다.
