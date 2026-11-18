@@ -1,138 +1,49 @@
 ---
 name: git-workflow
-description: Operate git and GitHub on behalf of a designer who does not use git directly — branches, commits, pull requests, CI checks, merging after CI passes, conflicts, and undoing mistakes safely. Use when starting work in a repository, saving or uploading work, or when the user mentions 저장, 커밋, 올려줘, 푸시, PR, 머지, 충돌, 되돌려, 깃, 깃허브.
+description: The release and hotfix procedures — proposing the version, moving CHANGELOG [Unreleased], creating the GitHub Release with gh, releasing a hotfix from a branch — and the PR template to copy into a project. Use when the user asks for a release, a version, a tag or a hotfix, or when a project needs its pull request template. Branch, commit, PR and version rules themselves are always loaded from the git rule.
 allowed-tools: Bash
 metadata:
-  reviewed: 2026-11-10
+  reviewed: 2026-11-12
 ---
 
-# Git Workflow
+# Release and hotfix procedures
 
-The user does not run git themselves. You run it and report the outcome in plain Korean.
-A repository's `CLAUDE.md` overrides this file on the base branch, merge method and required
-checks. No reviewer is required unless the repository says so.
+The rules — branch names, commit format, who merges, what a version is — are in the `git` rule
+(`~/.claude/rules/git.md`) and apply without this skill. This is what to do when the user asks
+for a release. Nothing here runs on the AI's own initiative.
 
-## Never
+## Release
 
-Do not run these. If one looks necessary, stop, explain why, and ask.
+1. Propose the version and name the commit it will point at — `main` HEAD unless the user says
+   otherwise. With no version given, read the latest release (`gh release list --limit 1`, or
+   `git describe --tags --abbrev=0`) and increment the patch number. With no tag yet, ask; do
+   not assume `0.1.0` or `1.0.0`.
+2. PR: move `[Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`
+   ([RELEASE.md](RELEASE.md)). Nothing else changes — there is no version field to bump. It is
+   merged as the `git` rule says.
+3. On the merged `main`, create the release. The user may do it in the GitHub UI; when the
+   request covers it, run it with `gh`, the body cut from the CHANGELOG section (command in
+   RELEASE.md):
 
-- Commit directly on the default branch.
-- `git push --force` or `--force-with-lease`.
-- `git reset --hard`, `git clean -f`, `git checkout .`, `git restore .`.
-- `git rebase` on a pushed branch.
-- `git stash`. Save unfinished work as a commit (`chore: 작업 중`) on the current branch.
-- `git add -A` or `git add .`. Name the files.
-- `--no-verify`, or `gh pr merge --admin`.
-- `git tag`, `gh release`, or editing a version number, unless the repository allows it and
-  the user asks.
+   ```bash
+   gh release create vX.Y.Z --target main --title vX.Y.Z --notes-file <(…)
+   ```
 
-## Procedure
+   Creating the release creates the tag; `release.yml` (`on: release: [published]`) builds and
+   deploys from it. A tag created from a workflow's `GITHUB_TOKEN` does not trigger
+   `release.yml`, which is one more reason not to tag by hand.
 
-### 1. Start
+## Hotfix
 
-```bash
-git status
-git switch <base> && git pull --ff-only
-git switch -c <type>/<short-english-description>
-```
+Only when `main` is ahead of production and a critical bug exists in production.
 
-- If `git status` shows uncommitted work, ask whether it belongs to this task before moving.
-- Base branch: the repository's `CLAUDE.md`, else
-  `gh repo view --json defaultBranchRef -q .defaultBranchRef.name`.
-- Branch types are the commit types below. Example: `fix/upload-button-height`.
+1. Branch from the production release: `git checkout -b hotfix/v1.0.1-<bug> v1.0.0`.
+2. Fix, commit (`fix:`), push the branch.
+3. On the user's request, release from the branch:
+   `gh release create v1.0.1 --target hotfix/v1.0.1-<bug> --notes-file <(…)`.
+4. PR the fix and its CHANGELOG entry back to `main`.
 
-### 2. Commit
+## PR template
 
-Run `git status` and `git diff`, then stage named files. Do not commit secrets, `.env` files,
-certificates, or real personal data; if one appears, stop and tell the user.
-
-Format: `<type>(<scope>): <description>`. The description may be Korean.
-
-| Type | Use |
-|---|---|
-| `feat` | Something new appears or the look changes on purpose |
-| `fix` | Something was wrong and now works or looks right |
-| `docs` | Documentation only |
-| `chore` | Everything else, including work-in-progress saves |
-
-CSS and markup changes are `feat(ui)` or `fix(ui)`. Do not use `style`, which in Conventional
-Commits means whitespace-only formatting.
-
-Example: `fix(ui): 업로드 단추 높이를 맞춘다`
-
-### 3. Push and open a pull request
-
-```bash
-git push -u origin <branch>
-gh pr create --base <base> --title "<commit format>" --body "<body>"
-```
-
-- Body, in Korean: what changed and why; what you checked; before and after screenshots when
-  the screen changed.
-- Take the screenshots yourself with a headless browser and save them outside the repository,
-  in `~/pr-screenshots/<branch>/`.
-- `gh` cannot attach images. Give the user the folder and the PR link, and ask them to drag the
-  screenshots into a comment on the PR page.
-- Before they upload, remind them that screenshots must not show real personal data.
-
-### 4. Wait for checks
-
-```bash
-gh pr checks <number> --watch
-```
-
-On failure, read `gh run view <run-id> --log-failed`, explain the cause, fix it on the same
-branch, and push a new commit. If it fails again and you do not understand why, stop and ask.
-
-### 5. Merge
-
-Merge only when both are true: every check passed, and the user said to merge in this
-conversation. Complete the repository's pre-merge steps first.
-
-```bash
-gh pr merge <number> --merge --delete-branch
-git switch <base> && git pull --ff-only
-```
-
-If GitHub refuses the merge, report the reason. Do not work around it.
-
-### 6. Bring in others' changes
-
-```bash
-git fetch origin
-git merge origin/<base>
-```
-
-Use merge, not rebase, so a force push is never needed. If a push is rejected as
-non-fast-forward, run `git pull --no-rebase`, then push again.
-
-## Conflicts
-
-Stop editing. Run `git status`, name the conflicted files, and explain in plain words what each
-side changed. Propose a result and get the user's choice when the two sides disagree about how
-something should look or behave. `git merge --abort` returns to the state before the merge.
-
-## Undoing
-
-| Situation | Action |
-|---|---|
-| Not committed | Show what will be lost, confirm, then `git restore <file>` per file |
-| Committed, not pushed | `git reset --soft HEAD~1` keeps the changes in the working tree |
-| Pushed, not merged | Add a new commit, or `git revert <commit>` |
-| Merged | New branch `fix/revert-<topic>`, `git revert -m 1 <merge-commit>`, then a normal PR |
-
-## Common errors
-
-- `Permission denied (publickey)`: the SSH key is not set up. Check with `ssh -T git@github.com`.
-- `Repository not found`: the account has no access to that repository. Ask the owner.
-- `gh: not logged in`: run `gh auth login --hostname github.com --git-protocol https --web`
-  yourself, give the user the one-time code it prints, and have them approve in the browser.
-- `Your local changes would be overwritten`: commit them first, then repeat the command.
-
-## Checklist
-
-- [ ] On a branch, not the default branch.
-- [ ] Only the intended files were committed.
-- [ ] The changed screen was opened and looked at.
-- [ ] Checks passed before merging, and the user asked for the merge.
-- [ ] Told the user the result and the PR link.
+A new project copies [templates/pull_request_template.md](templates/pull_request_template.md)
+to `.github/pull_request_template.md`.
